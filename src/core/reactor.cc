@@ -70,10 +70,15 @@ module;
 #include <boost/algorithm/clamp.hpp>
 #include <boost/version.hpp>
 #include <dirent.h>
+#include <cstdint>
 #define __user /* empty */  // for xfs includes, below
 #include <linux/types.h> // for xfs, below
 #include <sys/ioctl.h>
 #include <linux/perf_event.h>
+#include <linux/fs.h>
+
+#if __has_include(<xfs/linux.h>) && __has_include(<xfs/xfs.h>)
+#define SEASTAR_HAS_XFS_HEADERS 1
 #include <xfs/linux.h>
 /*
  * With package xfsprogs-devel >= 5.14.1, `fallthrough` has defined to
@@ -85,6 +90,43 @@ module;
 #define min min    /* prevent xfs.h from defining min() as a macro */
 #include <xfs/xfs.h>
 #undef min
+#else
+#define SEASTAR_HAS_XFS_HEADERS 0
+#ifndef XFS_IOC_FSGETXATTR
+#ifdef FS_IOC_FSGETXATTR
+#define XFS_IOC_FSGETXATTR FS_IOC_FSGETXATTR
+#else
+#define XFS_IOC_FSGETXATTR 0
+#endif
+#endif
+#ifndef XFS_IOC_FSSETXATTR
+#ifdef FS_IOC_FSSETXATTR
+#define XFS_IOC_FSSETXATTR FS_IOC_FSSETXATTR
+#else
+#define XFS_IOC_FSSETXATTR 0
+#endif
+#endif
+#ifndef XFS_XFLAG_EXTSIZE
+#ifdef FS_XFLAG_EXTSIZE
+#define XFS_XFLAG_EXTSIZE FS_XFLAG_EXTSIZE
+#else
+#define XFS_XFLAG_EXTSIZE 0
+#endif
+#endif
+#ifndef FS_IOC_FSGETXATTR
+#ifndef SEASTAR_FAKE_FSXATTR
+#define SEASTAR_FAKE_FSXATTR
+struct fsxattr {
+    uint32_t fsx_xflags = 0;
+    uint32_t fsx_extsize = 0;
+    uint32_t fsx_nextents = 0;
+    uint32_t fsx_projid = 0;
+    uint32_t fsx_cowextsize = 0;
+    uint8_t fsx_pad[8] = {};
+};
+#endif
+#endif
+#endif
 #include <fmt/ostream.h>
 #include <fmt/ranges.h>
 
@@ -1766,6 +1808,7 @@ reactor::open_file_dma(std::string_view nameref, open_flags flags, file_open_opt
                     return maybe_ret;
                 }
             }
+#if SEASTAR_HAS_XFS_HEADERS
             if (fd != -1 && options.extent_allocation_size_hint && !_cfg.kernel_page_cache) {
                 fsxattr attr = {};
                 int r = ::ioctl(fd, XFS_IOC_FSGETXATTR, &attr);
@@ -1786,6 +1829,7 @@ reactor::open_file_dma(std::string_view nameref, open_flags flags, file_open_opt
                     ::ioctl(fd, XFS_IOC_FSSETXATTR, &attr);
                 }
             }
+#endif
             r = ::fstat(fd, &st);
             if (r == -1) {
                 return wrap_syscall(r, st);

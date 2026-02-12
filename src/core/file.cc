@@ -30,6 +30,7 @@ module;
 #include <functional>
 #include <memory>
 #include <optional>
+#include <cstdint>
 #include <vector>
 #include <seastar/util/assert.hh>
 
@@ -43,6 +44,11 @@ module;
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/statfs.h>
+#include <sys/sysmacros.h>
+
+#if __has_include(<xfs/linux.h>) && __has_include(<xfs/xfs.h>)
+#define SEASTAR_HAS_XFS_HEADERS 1
 #include <xfs/linux.h>
 /*
  * With package xfsprogs-devel >= 5.14.1, `fallthrough` has defined to
@@ -54,6 +60,51 @@ module;
 #define min min    /* prevent xfs.h from defining min() as a macro */
 #include <xfs/xfs.h>
 #undef min
+#else
+#define SEASTAR_HAS_XFS_HEADERS 0
+struct dioattr {
+    int d_mem = 0;
+    int d_miniosz = 4096;
+    int d_maxiosz = 0;
+};
+#ifndef XFS_IOC_DIOINFO
+#define XFS_IOC_DIOINFO 0
+#endif
+#ifndef XFS_IOC_FSGETXATTR
+#ifdef FS_IOC_FSGETXATTR
+#define XFS_IOC_FSGETXATTR FS_IOC_FSGETXATTR
+#else
+#define XFS_IOC_FSGETXATTR 0
+#endif
+#endif
+#ifndef XFS_IOC_FSSETXATTR
+#ifdef FS_IOC_FSSETXATTR
+#define XFS_IOC_FSSETXATTR FS_IOC_FSSETXATTR
+#else
+#define XFS_IOC_FSSETXATTR 0
+#endif
+#endif
+#ifndef XFS_XFLAG_EXTSIZE
+#ifdef FS_XFLAG_EXTSIZE
+#define XFS_XFLAG_EXTSIZE FS_XFLAG_EXTSIZE
+#else
+#define XFS_XFLAG_EXTSIZE 0
+#endif
+#endif
+#ifndef FS_IOC_FSGETXATTR
+#ifndef SEASTAR_FAKE_FSXATTR
+#define SEASTAR_FAKE_FSXATTR
+struct fsxattr {
+    uint32_t fsx_xflags = 0;
+    uint32_t fsx_extsize = 0;
+    uint32_t fsx_nextents = 0;
+    uint32_t fsx_projid = 0;
+    uint32_t fsx_cowextsize = 0;
+    uint8_t fsx_pad[8] = {};
+};
+#endif
+#endif
+#endif
 
 #ifdef SEASTAR_MODULE
 module seastar;
@@ -1029,6 +1080,7 @@ posix_file_handle_impl::to_file() && {
 
 // Some kernels can append to xfs filesystems, some cannot; determine
 // from kernel version.
+#if SEASTAR_HAS_XFS_HEADERS
 static
 unsigned
 xfs_concurrency_from_kernel_version() {
@@ -1041,6 +1093,7 @@ xfs_concurrency_from_kernel_version() {
     // Cannot append at all; need ftrucnate().
     return 0;
 }
+#endif
 
 future<shared_ptr<file_impl>>
 make_file_impl(int fd, file_open_options options, int flags, struct stat st) noexcept {
@@ -1072,7 +1125,8 @@ make_file_impl(int fd, file_open_options options, int flags, struct stat st) noe
             internal::fs_info fsi;
             fsi.block_size = sfs.f_bsize;
             switch (sfs.f_type) {
-            case internal::fs_magic::xfs:
+#if SEASTAR_HAS_XFS_HEADERS
+            case internal::fs_magic::xfs: {
                 dioattr da;
                 if (::ioctl(fd, XFS_IOC_DIOINFO, &da) == 0) {
                     fsi.dioinfo = std::move(da);
@@ -1084,6 +1138,8 @@ make_file_impl(int fd, file_open_options options, int flags, struct stat st) noe
                 fsi.fsync_is_exclusive = true;
                 fsi.nowait_works = internal::kernel_uname().whitelisted({"4.13"});
                 break;
+            }
+#endif
             case internal::fs_magic::nfs:
                 fsi.append_challenged = false;
                 fsi.append_concurrency = 0;
