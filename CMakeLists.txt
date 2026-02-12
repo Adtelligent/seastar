@@ -1127,7 +1127,7 @@ target_link_libraries (seastar_private
 # The testing library.
 #
 
-if (Seastar_INSTALL OR Seastar_TESTING)
+if (Seastar_TESTING)
   add_library (seastar_testing
     include/seastar/testing/entry_point.hh
     include/seastar/testing/exchanger.hh
@@ -1296,10 +1296,12 @@ if (Seastar_INSTALL)
     ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-install${Seastar_PC}.in
     @ONLY)
 
-  configure_file (
-    ${CMAKE_CURRENT_SOURCE_DIR}/pkgconfig/seastar-testing.pc.in
-    ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-testing-install.pc.in
-    @ONLY)
+  if (Seastar_TESTING)
+    configure_file (
+      ${CMAKE_CURRENT_SOURCE_DIR}/pkgconfig/seastar-testing.pc.in
+      ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-testing-install.pc.in
+      @ONLY)
+  endif ()
 
   # Set paths in pkg-config files for direct use in the build directory.
   set (Seastar_PKG_CONFIG_PREFIX ${CMAKE_CURRENT_BINARY_DIR})
@@ -1311,26 +1313,32 @@ if (Seastar_INSTALL)
     ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar${Seastar_PC}.in
     @ONLY)
 
-  configure_file (
-    ${CMAKE_CURRENT_SOURCE_DIR}/pkgconfig/seastar-testing.pc.in
-    ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-testing.pc.in
-    @ONLY)
+  if (Seastar_TESTING)
+    configure_file (
+      ${CMAKE_CURRENT_SOURCE_DIR}/pkgconfig/seastar-testing.pc.in
+      ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-testing.pc.in
+      @ONLY)
+  endif ()
 
   file (GENERATE
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/seastar${Seastar_PC}
     INPUT ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar${Seastar_PC}.in)
 
-  file (GENERATE
-    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/seastar-testing.pc
-    INPUT ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-testing.pc.in)
+  if (Seastar_TESTING)
+    file (GENERATE
+      OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/seastar-testing.pc
+      INPUT ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-testing.pc.in)
+  endif ()
 
   file (GENERATE
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/seastar-install${Seastar_PC}
     INPUT ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-install${Seastar_PC}.in)
 
-  file (GENERATE
-    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/seastar-testing-install.pc
-    INPUT ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-testing-install.pc.in)
+  if (Seastar_TESTING)
+    file (GENERATE
+      OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/seastar-testing-install.pc
+      INPUT ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/seastar-testing-install.pc.in)
+  endif ()
 
   include (CMakePackageConfigHelpers)
   set (install_cmakedir ${CMAKE_INSTALL_LIBDIR}/cmake/Seastar)
@@ -1347,11 +1355,14 @@ if (Seastar_INSTALL)
     PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/scripts/seastar-json2code.py
     DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+  set (_seastar_install_targets seastar)
+  if (Seastar_TESTING)
+    list (APPEND _seastar_install_targets seastar_testing seastar_perf_testing)
+  endif ()
+
   install (
     TARGETS
-      seastar
-      seastar_testing
-      seastar_perf_testing
+      ${_seastar_install_targets}
     EXPORT seastar-export
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
@@ -1408,10 +1419,12 @@ if (Seastar_INSTALL)
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
     RENAME seastar${Seastar_PC})
 
-  install (
-    FILES ${CMAKE_CURRENT_BINARY_DIR}/seastar-testing-install.pc
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
-    RENAME seastar-testing.pc)
+  if (Seastar_TESTING)
+    install (
+      FILES ${CMAKE_CURRENT_BINARY_DIR}/seastar-testing-install.pc
+      DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
+      RENAME seastar-testing.pc)
+  endif ()
 
   #
   # Export targets from the build tree for the user package registry.
