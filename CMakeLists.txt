@@ -1268,6 +1268,15 @@ if (Seastar_INSTALL)
   set (Seastar_PKG_CONFIG_LIBDIR ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR})
   set (Seastar_PKG_CONFIG_SEASTAR_INCLUDE_FLAGS "-I${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}")
 
+  set (Seastar_FMT_PC_LIB "-lfmt")
+  if (TARGET fmt::fmt)
+    get_target_property (_seastar_fmt_type fmt::fmt TYPE)
+    if (_seastar_fmt_type AND NOT _seastar_fmt_type STREQUAL "INTERFACE_LIBRARY")
+      set (Seastar_FMT_PC_LIB "$<TARGET_LINKER_FILE:fmt::fmt>")
+    endif ()
+    unset (_seastar_fmt_type)
+  endif ()
+
   get_property (_is_Multi_Config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
   if (_is_Multi_Config)
     # use different library names for each config
