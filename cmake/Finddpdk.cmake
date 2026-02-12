@@ -43,18 +43,23 @@ if (dpdk_INCLUDE_DIR AND EXISTS "${dpdk_INCLUDE_DIR}/rte_build_config.h")
   endif ()
 endif ()
 
-set(rte_libs
+# Core DPDK libraries that are required
+set(rte_libs_required
+  eal
+  ethdev
+  mbuf
+  mempool
+  ring)
+
+# Optional DPDK libraries and drivers
+set(rte_libs_optional
   bus_pci
   bus_vdev
   cfgfile
   cmdline
   cryptodev
-  eal
-  ethdev
   hash
   kvargs
-  mbuf
-  mempool
   mempool_ring
   net
   net_bnxt
@@ -71,15 +76,16 @@ set(rte_libs
   net_vmxnet3
   pci
   rcu
-  ring
   security
   telemetry
   timer)
 # sfc_efx driver can only build on x86 and aarch64
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "amd64|x86_64|aarch64")
-  list (APPEND rte_libs
+  list (APPEND rte_libs_optional
     common_sfc_efx)
 endif ()
+
+set(rte_libs ${rte_libs_required} ${rte_libs_optional})
 
 list (APPEND dpdk_REQUIRED
   dpdk_INCLUDE_DIR)
@@ -98,8 +104,12 @@ foreach (lib ${rte_libs})
     NAME rte_${lib}
     HINTS
       ${dpdk_PC_STATIC_LIBRARY_DIRS})
-  list (APPEND dpdk_REQUIRED
-    ${library_name})
+
+  # Only mark required libraries as REQUIRED, others are optional
+  if (lib IN_LIST rte_libs_required)
+    list (APPEND dpdk_REQUIRED ${library_name})
+  endif()
+
   list (APPEND dpdk_LIBRARIES
     ${library_name})
 
