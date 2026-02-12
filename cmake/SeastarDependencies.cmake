@@ -85,6 +85,11 @@ macro (seastar_find_dependencies)
 
   if (Seastar_DPDK)
     seastar_find_dep (dpdk)
+    # Add DPDK compile flags (like -include rte_config.h) to the build
+    if (dpdk_FOUND AND dpdk_CFLAGS)
+      add_compile_options(${dpdk_CFLAGS})
+      message(STATUS "Added DPDK compile flags: ${dpdk_CFLAGS}")
+    endif()
   endif()
   seastar_find_dep (fmt 8.1.1 REQUIRED)
   seastar_find_dep (lz4 1.7.3 REQUIRED)

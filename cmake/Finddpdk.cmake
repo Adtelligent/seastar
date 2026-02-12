@@ -26,12 +26,34 @@ pkg_check_modules (dpdk_PC libdpdk)
 # we cannot use ${dpdk_PC_STATIC_LDFLAGS} directly, because we want to
 # export DPDK as a bundle of static libraries, so need to find the
 # individual paths to all .a files
-find_path (dpdk_INCLUDE_DIR
-  NAMES rte_atomic.h
-  HINTS
-    ${dpdk_PC_INCLUDE_DIRS}
-  PATH_SUFFIXES
-    dpdk)
+
+# Determine whether to use static or dynamic linking
+# Default to static for backwards compatibility
+if (NOT DEFINED Seastar_DPDK_STATIC)
+  set(Seastar_DPDK_STATIC ON)
+endif()
+
+# Use include dirs from pkg-config first
+if (dpdk_PC_INCLUDE_DIRS)
+  # pkg-config provides include directories, find the one with rte_ethdev.h
+  foreach(inc_dir ${dpdk_PC_INCLUDE_DIRS})
+    if (EXISTS "${inc_dir}/rte_ethdev.h")
+      set(dpdk_INCLUDE_DIR "${inc_dir}")
+      message(STATUS "Found DPDK headers in: ${dpdk_INCLUDE_DIR}")
+      break()
+    endif()
+  endforeach()
+endif()
+
+# Fallback to find_path if pkg-config didn't provide valid path
+if (NOT dpdk_INCLUDE_DIR)
+  find_path (dpdk_INCLUDE_DIR
+    NAMES rte_ethdev.h
+    HINTS
+      ${dpdk_PC_INCLUDE_DIRS}
+    PATH_SUFFIXES
+      dpdk)
+endif()
 
 if (dpdk_INCLUDE_DIR AND EXISTS "${dpdk_INCLUDE_DIR}/rte_build_config.h")
   file (STRINGS "${dpdk_INCLUDE_DIR}/rte_build_config.h" rte_mbuf_refcnt_atomic
@@ -188,10 +210,23 @@ if (dpdk_FOUND AND NOT (TARGET dpdk))
 
     add_library (dpdk OBJECT IMPORTED)
     add_dependencies (dpdk dpdk_object)
+
+    # Extract compile flags from pkg-config (like -include rte_config.h)
+    set(dpdk_compile_flags "")
+    if(dpdk_PC_CFLAGS_OTHER)
+      list(APPEND dpdk_compile_flags ${dpdk_PC_CFLAGS_OTHER})
+    endif()
+
+    set(_dpdk_include_dirs ${dpdk_INCLUDE_DIR})
+    if(dpdk_PC_INCLUDE_DIRS)
+      set(_dpdk_include_dirs ${dpdk_PC_INCLUDE_DIRS})
+    endif()
+
     set_target_properties (dpdk
       PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES ${dpdk_INCLUDE_DIR}
+        INTERFACE_INCLUDE_DIRECTORIES "${_dpdk_include_dirs}"
         INTERFACE_LINK_LIBRARIES "${dpdk_dependencies}"
+        INTERFACE_COMPILE_OPTIONS "${dpdk_compile_flags}"
         IMPORTED_OBJECTS ${dpdk_object_path}
         ${compile_options})
     # we include dpdk in seastar already, but we need to pull in the
@@ -199,12 +234,33 @@ if (dpdk_FOUND AND NOT (TARGET dpdk))
     list(TRANSFORM dpdk_dependencies PREPEND "-l" OUTPUT_VARIABLE dpdk_LIBRARIES)
     add_library (DPDK::dpdk ALIAS dpdk)
   else ()
-    set (dpdk_LIBRARIES ${dpdk_PC_LDFLAGS})
+    # Use static or dynamic linking based on Seastar_DPDK_STATIC
+    if (Seastar_DPDK_STATIC)
+      message(STATUS "Using static DPDK libraries")
+      set (dpdk_LIBRARIES ${dpdk_PC_STATIC_LDFLAGS})
+    else()
+      message(STATUS "Using dynamic DPDK libraries")
+      set (dpdk_LIBRARIES ${dpdk_PC_LDFLAGS})
+    endif()
+
     add_library (DPDK::dpdk INTERFACE IMPORTED)
+
+    # Extract compile flags from pkg-config (like -include rte_config.h)
+    set(dpdk_compile_flags "")
+    if(dpdk_PC_CFLAGS_OTHER)
+      list(APPEND dpdk_compile_flags ${dpdk_PC_CFLAGS_OTHER})
+    endif()
+
     set_target_properties (DPDK::dpdk
       PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${dpdk_PC_INCLUDE_DIRS}"
         INTERFACE_LINK_LIBRARIES "${_dpdk_libraries};${dpdk_dependencies}"
+        INTERFACE_COMPILE_OPTIONS "${dpdk_compile_flags}"
         ${compile_options})
+  endif()
+
+  # Export compile flags as a public variable for Seastar to use
+  if(dpdk_PC_CFLAGS_OTHER)
+    set(dpdk_CFLAGS ${dpdk_PC_CFLAGS_OTHER} CACHE STRING "DPDK compile flags")
   endif()
 endif ()
