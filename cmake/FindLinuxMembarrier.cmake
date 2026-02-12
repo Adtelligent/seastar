@@ -23,9 +23,28 @@
 find_path (LinuxMembarrier_INCLUDE_DIR
   NAMES linux/membarrier.h)
 
-include (CheckCXXSourceCompiles)
 file (READ ${CMAKE_CURRENT_LIST_DIR}/code_tests/LinuxMembarrier_test.cc _linuxmembarrier_test_code)
-check_cxx_source_compiles ("${_linuxmembarrier_test_code}" LinuxMembarrier_FOUND)
+
+# Use try_compile instead of check_cxx_source_compiles for better reliability
+# with CMake 3.25+ where check_cxx_source_compiles can fail silently even
+# when the code compiles successfully
+set(_test_dir "${CMAKE_BINARY_DIR}/CMakeFiles/LinuxMembarrierTest")
+file(MAKE_DIRECTORY "${_test_dir}")
+file(WRITE "${_test_dir}/test.cpp" "${_linuxmembarrier_test_code}")
+
+try_compile(
+  LinuxMembarrier_FOUND
+  "${_test_dir}"
+  "${_test_dir}/test.cpp"
+  OUTPUT_VARIABLE _compile_output
+)
+
+if(NOT LinuxMembarrier_FOUND)
+  message(STATUS "LinuxMembarrier compilation failed. Output:\n${_compile_output}")
+endif()
+
+unset(_test_dir)
+unset(_compile_output)
 
 if (LinuxMembarrier_FOUND)
   set (LinuxMembarrier_INCLUDE_DIRS ${LinuxMembarrier_INCLUDE_DIR})
