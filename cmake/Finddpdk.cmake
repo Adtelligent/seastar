@@ -192,7 +192,7 @@ if (dpdk_FOUND AND NOT (TARGET dpdk))
     set(compile_options
       INTERFACE_COMPILE_OPTIONS "-Wno-volatile")
   endif()
-  if (library_suffix STREQUAL CMAKE_STATIC_LIBRARY_SUFFIX)
+  if (library_suffix STREQUAL CMAKE_STATIC_LIBRARY_SUFFIX AND Seastar_DPDK_STATIC)
     # No pmd driver code will be pulled in without "--whole-archive". To
     # avoid exposing that to seastar users, combine dpdk into a single
     # .o file.
