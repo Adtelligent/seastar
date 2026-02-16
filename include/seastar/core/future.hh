@@ -565,6 +565,7 @@ struct future_state :  public future_state_base, private internal::uninitialized
             // on it. Gcc 12 started to catch some simple cases of this
             // at compile time, so we need to tell it that it's fine.
 #pragma GCC diagnostic ignored "-Wuninitialized"
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
             memmove(reinterpret_cast<char*>(&this->uninitialized_get()),
                    &x.uninitialized_get(),
                    internal::used_size<internal::maybe_wrap_ref<T>>::value);
