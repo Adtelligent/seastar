@@ -27,6 +27,7 @@
 #include <seastar/util/std-compat.hh>
 #include <seastar/util/modules.hh>
 #include <optional>
+#include <vector>
 #endif
 
 namespace seastar {
@@ -36,6 +37,14 @@ namespace prometheus {
 SEASTAR_MODULE_EXPORT_BEGIN
 
 /*!
+ * Holds a per-family prefix override for prometheus metrics.
+ */
+struct prefix_override {
+    sstring metric_name_prefix; //!< Match metric family names that start with this prefix
+    sstring prefix; //!< a prefix that will be added to matched metric names
+};
+
+/*!
  * Holds prometheus related configuration
  */
 struct config {
@@ -43,6 +52,7 @@ struct config {
     sstring hostname; //!< hostname is deprecated, use label instead
     std::optional<metrics::label_instance> label; //!< A label that will be added to all metrics, we advice not to use it and set it on the prometheus server
     sstring prefix = "seastar"; //!< a prefix that will be added to metric names
+    std::vector<prefix_override> prefix_overrides; //!< per-family prefix overrides matched by metric family name prefix
     bool allow_protobuf = false; // protobuf support is experimental and off by default
 };
 

@@ -767,7 +767,15 @@ future<> write_text_representation(output_stream<char>& out, const config& ctx, 
         bool found = false;
         std::stringstream s;
         for (metric_family& metric_family : m) {
-            auto name = ctx.prefix + "_" + metric_family.name();
+            const auto& family_name = metric_family.name();
+            const auto* metric_prefix = &ctx.prefix;
+            for (const auto& prefix_override : ctx.prefix_overrides) {
+                if (boost::starts_with(family_name, prefix_override.metric_name_prefix)) {
+                    metric_prefix = &prefix_override.prefix;
+                    break;
+                }
+            }
+            auto name = *metric_prefix + "_" + family_name;
             found = false;
             metric_aggregate_by_labels aggregated_values(metric_family.metadata().aggregate_labels);
             bool should_aggregate = enable_aggregation && !metric_family.metadata().aggregate_labels.empty();
@@ -824,9 +832,16 @@ future<> write_protobuf_representation(output_stream<char>& out, const config& c
         metric_aggregate_by_labels aggregated_values(metric_family.metadata().aggregate_labels);
         bool should_aggregate = enable_aggregation && !metric_family.metadata().aggregate_labels.empty();
         auto& name = metric_family.name();
+        const auto* metric_prefix = &ctx.prefix;
+        for (const auto& prefix_override : ctx.prefix_overrides) {
+            if (boost::starts_with(name, prefix_override.metric_name_prefix)) {
+                metric_prefix = &prefix_override.prefix;
+                break;
+            }
+        }
         pm::MetricFamily mtf;
         bool empty_metric = true;
-        mtf.set_name(fmt::format("{}_{}", ctx.prefix, name));
+        mtf.set_name(fmt::format("{}_{}", *metric_prefix, name));
         mtf.mutable_metric()->Reserve(metric_family.size());
         metric_family.foreach_metric([&mtf, &ctx, &filter, &aggregated_values, &empty_metric, should_aggregate](const auto& value, const auto& value_info) {
             if ((value_info.should_skip_when_empty() && value.is_empty()) || !filter(value_info.labels())) {
