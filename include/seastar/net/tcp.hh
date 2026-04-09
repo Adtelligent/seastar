@@ -1855,6 +1855,10 @@ void tcp<InetTraits>::tcb::close() noexcept {
         // tcp::tcb::get_packet(), packet with FIN will not be generated.
         output_one();
         output();
+    }).discard_result().template handle_exception_type([](const std::system_error& e) {
+        // If the connection is reset during close, we can just ignore it.
+        if (e.code().value() != ECONNRESET)
+            throw;
     });
 }
 
