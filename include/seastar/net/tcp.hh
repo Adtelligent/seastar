@@ -1771,7 +1771,9 @@ future<> tcp<InetTraits>::tcb::wait_for_all_data_acked() {
     if (_snd.data.empty() && _snd.unsent_len == 0) {
         return make_ready_future<>();
     }
-    _snd._all_data_acked_promise = promise<>();
+    if (!_snd._all_data_acked_promise) {
+        _snd._all_data_acked_promise = promise<>();
+    }
     return _snd._all_data_acked_promise->get_future();
 }
 
@@ -1836,9 +1838,9 @@ void tcp<InetTraits>::tcb::close() noexcept {
     if (in_state(CLOSED) || _snd.closed) {
         return;
     }
+    _snd.closed = true;
     // TODO: We should return a future to upper layer
     (void)wait_for_all_data_acked().then([this, zis = this->shared_from_this()] () mutable {
-        _snd.closed = true;
         tcp_debug("close: unsent_len=%d\n", _snd.unsent_len);
         if (in_state(CLOSE_WAIT)) {
             tcp_debug("close: CLOSE_WAIT -> LAST_ACK\n");
