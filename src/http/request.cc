@@ -62,6 +62,11 @@ future<> request::write_request_line(output_stream<char>& out) const {
     SEASTAR_ASSERT(!_version.empty());
     std::string_view method = _method_view.empty() ? std::string_view(_method) : _method_view;
     std::string_view url = _url_view.empty() ? std::string_view(_url) : _url_view;
+
+    if (url.size() <= small_request_line_threshold) {
+        return out.write(request_line());
+    }
+
     return out.write(method.data(), method.size())
         .then([&out] { return out.write(" ", 1); })
         .then([&out, url] { return out.write(url.data(), url.size()); })

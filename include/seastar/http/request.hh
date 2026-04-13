@@ -88,6 +88,11 @@ struct request {
     // instead of '?'.
     bool _url_has_query = false;
 
+    // URL length threshold for write_request_line(): requests whose URL is at most
+    // this many bytes are sent via a single request_line() allocation instead of
+    // part-by-part writes.
+    static constexpr size_t small_request_line_threshold = 256;
+
     /**
      * Get the address of the client that generated the request
      * @return The address of the client that generated the request
@@ -332,6 +337,10 @@ struct request {
      * an intermediate concatenated string. Use this together with _method_view /
      * _url_view to send a request whose URL is backed by an external buffer
      * with zero copies.
+     *
+     * When the URL length is at most \p small_request_line_threshold bytes,
+     * request_line() is called and written as a single buffer instead,
+     * which is cheaper for short lines.
      */
     future<> write_request_line(output_stream<char>& out) const;
     future<> write_request_headers(output_stream<char>& out) const;
