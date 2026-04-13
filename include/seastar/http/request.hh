@@ -78,6 +78,12 @@ struct request {
     sstring protocol_name = "http";
     noncopyable_function<future<>(output_stream<char>&&)> body_writer; // for client
 
+    // Non-owning views for zero-copy request construction. When non-empty,
+    // these override _method and _url respectively when building the request line.
+    // The buffers they reference must remain valid until the request is fully sent.
+    std::string_view _method_view;
+    std::string_view _url_view;
+
     /**
      * Get the address of the client that generated the request
      * @return The address of the client that generated the request
@@ -314,6 +320,16 @@ struct request {
     static request make(httpd::operation_type type, sstring host, sstring path);
 
     sstring request_line() const;
+
+    /**
+     * \brief Write the request line directly to a stream without string concatenation.
+     *
+     * Equivalent to writing the result of request_line(), but avoids building
+     * an intermediate concatenated string. Use this together with _method_view /
+     * _url_view to send a request whose URL is backed by an external buffer
+     * with zero copies.
+     */
+    future<> write_request_line(output_stream<char>& out) const;
     future<> write_request_headers(output_stream<char>& out) const;
 private:
     void add_query_param(std::string_view param);

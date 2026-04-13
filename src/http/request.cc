@@ -39,6 +39,7 @@ namespace seastar {
 namespace http {
 
 sstring request::format_url() const {
+    std::string_view url = _url_view.empty() ? std::string_view(_url) : _url_view;
     sstring query = "";
     sstring delim = "?";
     for (const auto& p : query_parameters) {
@@ -48,12 +49,51 @@ sstring request::format_url() const {
         }
         delim = "&";
     }
-    return _url + query;
+    return sstring(url) + query;
 }
 
 sstring request::request_line() const {
     SEASTAR_ASSERT(!_version.empty());
-    return _method + " " + format_url() + " HTTP/" + _version + "\r\n";
+    std::string_view method = _method_view.empty() ? std::string_view(_method) : _method_view;
+    return sstring(method) + " " + format_url() + " HTTP/" + _version + "\r\n";
+}
+
+future<> request::write_request_line(output_stream<char>& out) const {
+    SEASTAR_ASSERT(!_version.empty());
+    std::string_view method = _method_view.empty() ? std::string_view(_method) : _method_view;
+    std::string_view url = _url_view.empty() ? std::string_view(_url) : _url_view;
+    return out.write(method.data(), method.size())
+        .then([&out] { return out.write(" ", 1); })
+        .then([&out, url] { return out.write(url.data(), url.size()); })
+        .then([this, &out] {
+            if (query_parameters.empty()) {
+                return make_ready_future<>();
+            }
+            return do_for_each(query_parameters, [&out, first = true](const auto& p) mutable {
+                const char* sep = first ? "?" : "&";
+                first = false;
+                auto key = internal::url_encode(p.first);
+                bool has_value = !p.second.empty();
+                auto value = has_value ? internal::url_encode(p.second) : sstring{};
+                return out.write(sep, 1)
+                    .then([&out, key = std::move(key)] () mutable {
+                        return out.write(std::move(key));
+                    })
+                    .then([&out, value = std::move(value), has_value] () mutable {
+                        if (!has_value) {
+                            return make_ready_future<>();
+                        }
+                        return out.write("=", 1).then([&out, value = std::move(value)] () mutable {
+                            return out.write(std::move(value));
+                        });
+                    });
+            });
+        })
+        .then([this, &out] {
+            return out.write(" HTTP/", 6)
+                .then([this, &out] { return out.write(_version.data(), _version.size()); })
+                .then([&out] { return out.write("\r\n", 2); });
+        });
 }
 
 // FIXME -- generalize with reply::write_request_headers
