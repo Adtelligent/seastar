@@ -83,6 +83,10 @@ struct request {
     // The buffers they reference must remain valid until the request is fully sent.
     std::string_view _method_view;
     std::string_view _url_view;
+    // Set to true when the URL (either _url or _url_view) already contains a '?'
+    // so that additional query_parameters are appended with '&' as the first separator
+    // instead of '?'.
+    bool _url_has_query = false;
 
     /**
      * Get the address of the client that generated the request

@@ -41,7 +41,7 @@ namespace http {
 sstring request::format_url() const {
     std::string_view url = _url_view.empty() ? std::string_view(_url) : _url_view;
     sstring query = "";
-    sstring delim = "?";
+    sstring delim = _url_has_query ? "&" : "?";
     for (const auto& p : query_parameters) {
         query += delim + internal::url_encode(p.first);
         if (!p.second.empty()) {
@@ -69,7 +69,7 @@ future<> request::write_request_line(output_stream<char>& out) const {
             if (query_parameters.empty()) {
                 return make_ready_future<>();
             }
-            return do_for_each(query_parameters, [&out, first = true](const auto& p) mutable {
+            return do_for_each(query_parameters, [&out, first = !_url_has_query](const auto& p) mutable {
                 const char* sep = first ? "?" : "&";
                 first = false;
                 auto key = internal::url_encode(p.first);
