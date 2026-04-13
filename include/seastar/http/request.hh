@@ -30,6 +30,7 @@
 //
 #pragma once
 
+#include <string_view>
 #include <seastar/core/iostream.hh>
 #include <seastar/core/sstring.hh>
 #include <strings.h>
@@ -78,14 +79,15 @@ struct request {
     sstring protocol_name = "http";
     noncopyable_function<future<>(output_stream<char>&&)> body_writer; // for client
 
-    // Non-owning views for zero-copy request construction. When non-empty,
-    // these override _method and _url respectively when building the request line.
+    // Non-owning view for zero-copy request construction. When non-empty,
+    // this overrides _url when building the request line. _url_view may contain
+    // the full request-target tail, including an existing
+    // query string. query_parameters are appended after that request-target tail.
     // The buffers they reference must remain valid until the request is fully sent.
-    std::string_view _method_view;
     std::string_view _url_view;
-    // Set to true when the URL (either _url or _url_view) already contains a '?'
-    // so that additional query_parameters are appended with '&' as the first separator
-    // instead of '?'.
+    // Optional hint that the selected request-target already contains a '?', so
+    // additional query_parameters should start with '&'. If left false, the
+    // request code also detects '?' in the selected _url/_url_view automatically.
     bool _url_has_query = false;
 
     // URL length threshold for write_request_line(): requests whose URL is at most
@@ -319,6 +321,19 @@ struct request {
     static request make(sstring method, sstring host, sstring path);
 
     /**
+     * \brief Make simple request using an external request-target buffer
+     *
+     * \param method - method to use, e.g. "GET" or "POST"
+     * \param host - host to contact. This value will be used as the "Host" header
+     * \param path - request-target tail to send. May already include query
+     *  parameters.
+     *
+     * The buffer referenced by \p path must remain valid until the request is
+     * fully sent.
+     */
+    static request make_for_external_target(sstring method, sstring host, std::string_view path);
+
+    /**
      * \brief Make simple request
      *
      * \param method - method to use, e.g. operation_type::GET
@@ -328,15 +343,24 @@ struct request {
      */
     static request make(httpd::operation_type type, sstring host, sstring path);
 
+    /**
+     * \brief Make simple request using an external request-target buffer
+     *
+     * Same as the overload above, but accepts an operation_type and stores the
+     * request-target as a non-owning view for zero-copy sending.
+     */
+    static request make_for_external_target(httpd::operation_type type, sstring host, std::string_view path);
+
     sstring request_line() const;
 
     /**
      * \brief Write the request line directly to a stream without string concatenation.
      *
      * Equivalent to writing the result of request_line(), but avoids building
-     * an intermediate concatenated string. Use this together with _method_view /
-     * _url_view to send a request whose URL is backed by an external buffer
-     * with zero copies.
+     * an intermediate concatenated string. Use this together with _url_view to
+     * send a request whose request-target tail is backed by an external buffer
+     * with zero copies. _url_view may already include query
+     * parameters; query_parameters from the map are appended after it.
      *
      * When the URL length is at most \p small_request_line_threshold bytes,
      * request_line() is called and written as a single buffer instead,
@@ -345,6 +369,8 @@ struct request {
     future<> write_request_line(output_stream<char>& out) const;
     future<> write_request_headers(output_stream<char>& out) const;
 private:
+    std::string_view url_for_request_line() const;
+    bool request_target_has_query() const;
     void add_query_param(std::string_view param);
     friend class experimental::connection;
 };

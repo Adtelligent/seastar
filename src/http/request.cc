@@ -38,10 +38,19 @@ module seastar;
 namespace seastar {
 namespace http {
 
+std::string_view request::url_for_request_line() const {
+    return _url_view.empty() ? std::string_view(_url) : _url_view;
+}
+
+bool request::request_target_has_query() const {
+    auto url = url_for_request_line();
+    return _url_has_query || url.find('?') != std::string_view::npos;
+}
+
 sstring request::format_url() const {
-    std::string_view url = _url_view.empty() ? std::string_view(_url) : _url_view;
+    std::string_view url = url_for_request_line();
     sstring query = "";
-    sstring delim = _url_has_query ? "&" : "?";
+    sstring delim = request_target_has_query() ? "&" : "?";
     for (const auto& p : query_parameters) {
         query += delim + internal::url_encode(p.first);
         if (!p.second.empty()) {
@@ -54,27 +63,26 @@ sstring request::format_url() const {
 
 sstring request::request_line() const {
     SEASTAR_ASSERT(!_version.empty());
-    std::string_view method = _method_view.empty() ? std::string_view(_method) : _method_view;
-    return sstring(method) + " " + format_url() + " HTTP/" + _version + "\r\n";
+    return _method + " " + format_url() + " HTTP/" + _version + "\r\n";
 }
 
 future<> request::write_request_line(output_stream<char>& out) const {
     SEASTAR_ASSERT(!_version.empty());
-    std::string_view method = _method_view.empty() ? std::string_view(_method) : _method_view;
-    std::string_view url = _url_view.empty() ? std::string_view(_url) : _url_view;
+    std::string_view url = url_for_request_line();
+    bool has_query = request_target_has_query();
 
     if (url.size() <= small_request_line_threshold) {
         return out.write(request_line());
     }
 
-    return out.write(method.data(), method.size())
+    return out.write(_method.data(), _method.size())
         .then([&out] { return out.write(" ", 1); })
         .then([&out, url] { return out.write(url.data(), url.size()); })
-        .then([this, &out] {
+        .then([this, &out, has_query] {
             if (query_parameters.empty()) {
                 return make_ready_future<>();
             }
-            return do_for_each(query_parameters, [&out, first = !_url_has_query](const auto& p) mutable {
+            return do_for_each(query_parameters, [&out, first = !has_query](const auto& p) mutable {
                 const char* sep = first ? "?" : "&";
                 first = false;
                 auto key = internal::url_encode(p.first);
@@ -177,8 +185,21 @@ request request::make(sstring method, sstring host, sstring path) {
     return rq;
 }
 
+request request::make_for_external_target(sstring method, sstring host, std::string_view path) {
+    request rq;
+    rq._method = std::move(method);
+    rq._url_view = path;
+    rq._url_has_query = path.find('?') != std::string_view::npos;
+    rq._headers["Host"] = std::move(host);
+    return rq;
+}
+
 request request::make(httpd::operation_type type, sstring host, sstring path) {
     return make(httpd::type2str(type), std::move(host), std::move(path));
+}
+
+request request::make_for_external_target(httpd::operation_type type, sstring host, std::string_view path) {
+    return make_for_external_target(httpd::type2str(type), std::move(host), path);
 }
 
 } // http namespace

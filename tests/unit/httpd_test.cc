@@ -1826,6 +1826,29 @@ SEASTAR_TEST_CASE(test_url_param_encode_decode) {
     return make_ready_future<>();
 }
 
+SEASTAR_TEST_CASE(test_format_url_appends_params_to_request_target_view_query) {
+    http::request req;
+    req._url_view = "/foo/bar?existing=1";
+    req.query_parameters["a"] = "2";
+
+    BOOST_REQUIRE_EQUAL(req.format_url(), "/foo/bar?existing=1&a=2");
+
+    return make_ready_future<>();
+}
+
+SEASTAR_TEST_CASE(test_make_with_external_request_target_uses_view) {
+    static constexpr std::string_view path = "/foo/bar?existing=1";
+    auto req = http::request::make_for_external_target("GET", "test", path);
+    req.query_parameters["a"] = "2";
+
+    BOOST_REQUIRE(req._url.empty());
+    BOOST_REQUIRE_EQUAL(req._url_view, path);
+    BOOST_REQUIRE(req._url_has_query);
+    BOOST_REQUIRE_EQUAL(req.format_url(), "/foo/bar?existing=1&a=2");
+
+    return make_ready_future<>();
+}
+
 SEASTAR_TEST_CASE(test_unexpected_exception_format) {
     try {
         throw httpd::unexpected_status_error(http::reply::status_type::see_other);
